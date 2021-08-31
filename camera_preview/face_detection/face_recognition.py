@@ -5,7 +5,7 @@ import numpy as np #For converting Images to Numerical array
 import os #To handle directories 
 from PIL import Image #Pillow lib for handling images 
 
-labels = ["Simeon", "Elon Musk"] 
+labels = ["Simeon"] 
 
 face_cascade = cv2.CascadeClassifier('face_detection/haarcascade_frontalface_default.xml')
 recognizer = cv2.face.LBPHFaceRecognizer_create()
@@ -23,7 +23,7 @@ while(True):
 
     	id_, conf = recognizer.predict(roi_gray) #recognize the Face
     
-    	if conf>=80:
+    	if conf >= 60:
     		font = cv2.FONT_HERSHEY_SIMPLEX #Font style for the name 
     		name = labels[id_] #Get the name from the List using ID number 
     		cv2.putText(img, name, (x,y), font, 1, (0,0,255), 2)
