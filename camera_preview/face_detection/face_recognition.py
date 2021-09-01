@@ -7,6 +7,7 @@ import time
 from PIL import Image #Pillow lib for handling images 
 from servo_controller import ServoControl
 import functools
+import asyncio
 
 labels = ["Simeon"] 
 
@@ -45,9 +46,12 @@ while(True):
 	faces = face_cascade.detectMultiScale(gray, scaleFactor=1.5, minNeighbors=5) #Recog. faces
 
 	if len(faces) > 0:
+		servos.cancelScan()
 		face_positions = map(lambda x : (x[0] + x[2] / 2, x[1] + x[3] / 2), faces)
 		position_centerpoint = functools.reduce(lambda x, y : ((x[0] + y[0]) / 2, (x[1] + y[1]) / 2), face_positions)
 		target_vector = (position_centerpoint[0] - frame_centerpoint[0], position_centerpoint[1] - frame_centerpoint[1])
+	else:
+		asyncio.to_thread(servos.scan, 10)
 
 	if len(faces) > 0 and (abs(target_vector[0]) > deadzone_threshold_percentage * frame_centerpoint[0] or abs(target_vector[1]) > deadzone_threshold_percentage * frame_centerpoint[1] or target_vector == (0, 0)):
 		print(target_vector)
