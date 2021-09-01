@@ -15,7 +15,8 @@ servos = ServoControl()
 recognizer = cv2.face.LBPHFaceRecognizer_create()
 recognizer.read("face_detection/face-trainer.yml")
 deadzone_threshold_percentage = .1
-rotation_velocity = 6 # Degrees per second
+velocity_damping_threshold = .3
+rotation_velocity = 8 # Degrees per second
 prev_time = 0
 target_vector = (0, 0)
 
@@ -24,15 +25,18 @@ frame_centerpoint = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) / 2, int(cap.get(cv2
 position_centerpoint = frame_centerpoint
 
 def look_at(vector, delta):
+	dampened_velocity = (rotation_velocity if abs(vector[0]) / frame_centerpoint[0] > velocity_damping_threshold else abs(vector[0]) * rotation_velocity / (frame_centerpoint[0] * velocity_damping_threshold), \
+		rotation_velocity if abs(vector[1]) / frame_centerpoint[1] > velocity_damping_threshold else abs(vector[1]) * rotation_velocity / (frame_centerpoint[1] * velocity_damping_threshold))
+
 	if vector[0] < 0:
-		servos.moveYawDegrees(rotation_velocity * delta)
+		servos.moveYawDegrees(dampened_velocity[0] * delta)
 	else:
-		servos.moveYawDegrees(-rotation_velocity * delta)
+		servos.moveYawDegrees(-dampened_velocity[0] * delta)
 
 	if vector[1] < 0:
-		servos.movePitchDegrees(rotation_velocity * delta)
+		servos.movePitchDegrees(dampened_velocity[1] * delta)
 	else:
-		servos.movePitchDegrees(-rotation_velocity * delta)
+		servos.movePitchDegrees(-dampened_velocity[1] * delta)
 
 while(True):
 
@@ -56,7 +60,7 @@ while(True):
 
 		id_, conf = recognizer.predict(roi_gray) #recognize the Face
 	
-		if conf >= 60:
+		if conf >= 80:
 			font = cv2.FONT_HERSHEY_SIMPLEX #Font style for the name 
 			name = labels[id_] #Get the name from the List using ID number 
 			cv2.putText(img, name, (x,y), font, 1, (0,0,255), 2)
