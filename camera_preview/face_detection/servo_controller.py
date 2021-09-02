@@ -1,41 +1,40 @@
 import numpy as np
 import pigpio
-import asyncio
-from asyncio import Event
+
 import time
+from threading import Lock
 
 class ServoControl:
+    epsilon = 5e-4
+
     def __init__(self):
+        self.servos_lock = Lock()
+
         self.pwmFrequency = 50
         self.servoGpioPin1 = 13
         self.servoGpioPin2 = 12
 
-        self.maxYawAngle = 60.0
-        self.maxPitchAngle = 45.0
-
-        self.halfYawAngle = maxYawAngle / 2
-        self.halfPitchAngle = maxPitchAngle / 2
+        self.maxYawAngle = 30.0
+        self.maxPitchAngle = 23.0
 
         self.scan_positions = {
-            "1": (halfYawAngle, -halfPitchAngle),
-            "2": (-halfYawAngle, -halfPitchAngle),
-            "3": (halfYawAngle, halfPitchAngle),
-            "4": (-halfYawAngle, halfPitchAngle)
+            "1": (-self.maxYawAngle, -self.maxPitchAngle),
+            "2": (self.maxYawAngle, -self.maxPitchAngle),
+            "3": (self.maxYawAngle, self.maxPitchAngle),
+            "4": (-self.maxYawAngle, self.maxPitchAngle)
         }
 
         self.scan_transitions = {
-            "1": ["2"],
-            "2": ["3"],
+            "1": ["3"],
+            "2": ["1"],
             "3": ["4"],
-            "4": ["1"]
+            "4": ["2"]
         }
 
         self.scan_position = "1"
         
-        self.currentYawAngle: int = self.scan_positions[self.scan_position][0] 
-        self.currentPitchAngle: int = self.scan_positions[self.scan_position][1]
-
-        self.scan_cancellation_event = Event()
+        self.currentYawAngle: float = self.scan_positions[self.scan_position][0] 
+        self.currentPitchAngle: float = self.scan_positions[self.scan_position][1]
 
         global pwm
         pwm = pigpio.pi()
@@ -45,7 +44,8 @@ class ServoControl:
         pwm.set_mode(self.servoGpioPin2, pigpio.OUTPUT)
         pwm.set_PWM_frequency(self.servoGpioPin2, 330)
 
-    def moveYawDegrees(self, degrees: int):
+    def moveYawDegrees(self, degrees: float):
+        self.servos_lock.acquire()
         self.currentYawAngle += degrees
 
         if (self.currentYawAngle > self.maxYawAngle):
@@ -56,8 +56,10 @@ class ServoControl:
         pulseWidth = 1000 / 90 * self.currentYawAngle + 1500
 
         pwm.set_servo_pulsewidth(self.servoGpioPin1, pulseWidth)
+        self.servos_lock.release()
 
-    def movePitchDegrees(self, degrees: int):
+    def movePitchDegrees(self, degrees: float):
+        self.servos_lock.acquire()
         self.currentPitchAngle += degrees
 
         if (self.currentPitchAngle > self.maxPitchAngle):
@@ -68,16 +70,17 @@ class ServoControl:
         pulseWidth = 1000 / 90 * self.currentPitchAngle + 1500
 
         pwm.set_servo_pulsewidth(self.servoGpioPin2, pulseWidth)
+        self.servos_lock.release()
 
-    def scan(self, scan_velocity):
-        if self.cancellation_event.is_set():
+    def scan(self, scan_velocity, scan_cancellation_event):
+        if scan_cancellation_event.is_set():
             return
         
         closest_position = "1"
         closest_distance = 10e+8
 
         for position in self.scan_positions:
-            distance = pow(self.currentYawAngle - self.scan.positions[position][0], 2) + pow(self.currentPitchAngle - self.scan.positions[position][1], 2)
+            distance = pow(self.currentYawAngle - self.scan_positions[position][0], 2) + pow(self.currentPitchAngle - self.scan_positions[position][1], 2)
 
             if distance <= closest_distance:
                 closest_distance = distance
@@ -86,37 +89,34 @@ class ServoControl:
         self.scan_position = closest_position
         initial_d = True
 
-        prev_time = time.time()
+        prev_time = 0
 
-        while (not cancellation_event.is_set()):
+        while (not scan_cancellation_event.is_set()):
             if not initial_d:
-                self.scan_position = self.scan_transitions[self.scan_position]
+                self.scan_position = self.scan_transitions[str(self.scan_position)][0]
 
-            diff_vector = (self.currentYawAngle - self.scan_positions[self.scan_position][0], self.currentPitchAngle - self.scan_positions[self.scan_position][1])
+            print(self.scan_position)
+            diff_vector = (self.currentYawAngle - self.scan_positions.get(str(self.scan_position))[0], self.currentPitchAngle - self.scan_positions.get(str(self.scan_position))[1])
 
-            while diff_vector != (0, 0):
+            while (abs(diff_vector[0]) > ServoControl.epsilon or abs(diff_vector[1]) > ServoControl.epsilon) and not scan_cancellation_event.is_set():
                 current_time = time.time()
 
                 if diff_vector[0] < 0:
-                    self.moveYawDegrees(-scan_velocity * (current_time - prev_time))
-                else:
                     self.moveYawDegrees(scan_velocity * (current_time - prev_time))
+                else:
+                    self.moveYawDegrees(-scan_velocity * (current_time - prev_time))
 
                 if diff_vector[1] < 0:
-                    self.movePitchDegrees(-scan_velocity * (current_time - prev_time))
-                else:
                     self.movePitchDegrees(scan_velocity * (current_time - prev_time))
-                
-                prev_time = time.time()
-
-                diff_vector = (self.currentYawAngle - self.scan_positions[self.scan_position][0], self.currentPitchAngle - self.scan_positions[self.scan_position][1])
+                else:
+                    self.movePitchDegrees(-scan_velocity * (current_time - prev_time))
+                    
+                prev_time = current_time
+                diff_vector = (self.currentYawAngle - self.scan_positions[str(self.scan_position)][0], self.currentPitchAngle - self.scan_positions[str(self.scan_position)][1])
 
             initial_d = False
 
-        self.cancellation_event.clear()
-            
-    def cancelScan():
-        self.cancellation_event.set()
+        scan_cancellation_event.clear()
 
     def destroy(self):
         pwm.set_PWM_dutycycle(self.servoGpioPin1, 0)
