@@ -74,6 +74,7 @@ class ServoControl:
 
     def scan(self, scan_velocity, scan_cancellation_event):
         if scan_cancellation_event.is_set():
+            scan_cancellation_event.clear()
             return
         
         closest_position = "1"

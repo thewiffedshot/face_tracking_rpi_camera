@@ -8,7 +8,7 @@ from PIL import Image #Pillow lib for handling images
 from servo_controller import ServoControl
 import functools
 import asyncio
-from threading import Thread
+from threading import Thread, Timer
 from asyncio import Event
 
 labels = ["Simeon"] 
@@ -43,25 +43,42 @@ def look_at(vector, delta):
 		servos.movePitchDegrees(-dampened_velocity[1] * delta)
 
 def main():
-	scan_thread = Thread(target=servos.scan, args=(10.0,scan_cancellation_event))
+	scan_thread: Thread = Thread(target=servos.scan, args=(10.0,scan_cancellation_event))
+
+	def start_scan():
+		scan_thread = Thread(target=servos.scan, args=(10.0,scan_cancellation_event))
+		scan_thread.start()
+
+	scan_start_timer: Timer = Timer(interval=5.0, function=start_scan)
+	
+	face_found: bool = False
+
+	def start_scan_timer():
+		if face_found:
+			return
+			
+		print("timer started")
+		scan_start_timer = Timer(interval=5.0, function=start_scan)
+		scan_start_timer.start()
+	
 	scan_thread.start()
 
 	while(True):
-
 		ret, img = cap.read() # Break video into frames 
 		gray  = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) #convert Video frame to Greyscale
 		faces = face_cascade.detectMultiScale(gray, scaleFactor=1.5, minNeighbors=5) #Recog. faces
 
 		if len(faces) > 0:
+			face_found = True
 			scan_cancellation_event.set()
 			scan_thread.join()
+				
 			face_positions = map(lambda x : (x[0] + x[2] / 2, x[1] + x[3] / 2), faces)
 			position_centerpoint = functools.reduce(lambda x, y : ((x[0] + y[0]) / 2, (x[1] + y[1]) / 2), face_positions)
 			target_vector = (position_centerpoint[0] - frame_centerpoint[0], position_centerpoint[1] - frame_centerpoint[1])
 		else:
-			if not scan_thread.is_alive():
-				scan_thread = Thread(target=servos.scan, args=(10.0,scan_cancellation_event))
-				scan_thread.start()
+			if not scan_thread.is_alive() and not scan_start_timer.is_alive():
+				start_scan_timer()
 
 		if len(faces) > 0 and (abs(target_vector[0]) > deadzone_threshold_percentage * frame_centerpoint[0] or abs(target_vector[1]) > deadzone_threshold_percentage * frame_centerpoint[1] or target_vector == (0, 0)):
 			look_at(target_vector, time.time() - prev_time)
@@ -73,10 +90,10 @@ def main():
 
 			id_, conf = recognizer.predict(roi_gray) #recognize the Face
 		
-			if conf >= 80:
-				font = cv2.FONT_HERSHEY_SIMPLEX #Font style for the name 
-				name = labels[id_] #Get the name 			print(target_vector)from the List using ID number 
-				cv2.putText(img, name, (x,y), font, 1, (0,0,255), 2)
+			#if conf >= 80:
+			#	font = cv2.FONT_HERSHEY_SIMPLEX #Font style for the name 
+			#	name = labels[id_] #Get the name from the List using ID number 
+			#	cv2.putText(img, name, (x,y), font, 1, (0,0,255), 2)
 			
 			cv2.rectangle(img,(x,y),(x+w,y+h),(0,255,0),2)
 
