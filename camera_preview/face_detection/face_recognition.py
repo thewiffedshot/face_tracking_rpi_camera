@@ -70,6 +70,7 @@ def main():
 		else:
 			if not scan_thread.is_alive() and time.time() - last_found_face_time > timeout_length_until_scan:
 				start_scan()
+				last_found_face_time = time.time()
 
 		if len(faces) > 0 and (abs(target_vector[0]) > deadzone_threshold_percentage * frame_centerpoint[0] or abs(target_vector[1]) > deadzone_threshold_percentage * frame_centerpoint[1] or target_vector == (0, 0)):
 			look_at(target_vector, time.time() - prev_time)
