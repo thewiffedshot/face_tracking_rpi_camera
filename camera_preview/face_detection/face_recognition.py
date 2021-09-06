@@ -71,7 +71,7 @@ class Program:
 
 				if scan_thread.is_alive():
 					scan_thread.join()
-					
+
 				face_positions = map(lambda x : (x[0] + x[2] / 2, x[1] + x[3] / 2), faces)
 				position_centerpoint = functools.reduce(lambda x, y : ((x[0] + y[0]) / 2, (x[1] + y[1]) / 2), face_positions)
 				target_vector = (position_centerpoint[0] - self.frame_centerpoint[0], position_centerpoint[1] - self.frame_centerpoint[1])
@@ -99,6 +99,11 @@ class Program:
 			cv2.imshow('Preview',img) #Display the Video
 
 			if cv2.waitKey(20) & 0xFF == ord('q'):
+				self.scan_cancellation_event.set()
+
+				if scan_thread.is_alive():
+					scan_thread.join()
+
 				break
 
 		# When everything done, release the capture
